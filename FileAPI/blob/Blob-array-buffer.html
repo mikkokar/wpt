@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>Blob Array Buffer</title>
+<link rel=help href="https://w3c.github.io/FileAPI/#text-method-algo">
+<link rel=author title="Jarryd Goodman" href="mailto:jarryg@chromium.org">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="../support/Blob.js"></script>
+<div id="log"></div>
+<script>
+test_blob_array_buffer(() => new Blob(["PASS"]).stream(), {
+  expected: "PASS",
+  desc: 'Blob.arrayBuffer()'
+})
+
+test_blob_array_buffer(() => new Blob(["P", "A", "SS"]).stream(), {
+  expected: "PASS",
+  desc: 'Blob.arrayBuffer() multi-element array in constructor'
+})
+
+test_blob_array_buffer(() => new Blob().stream(), {
+  expected: "",
+  desc: 'Blob.arrayBuffer() empty blob'
+})
+</script>

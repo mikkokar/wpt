@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>Blob Stream</title>
+<link rel=help href="https://w3c.github.io/FileAPI/#text-method-algo">
+<link rel=author title="Jarryd Goodman" href="mailto:jarryg@chromium.org">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="../support/Blob.js"></script>
+<div id="log"></div>
+<script>
+test_blob_text(() => new Blob(["PASS"]).text() , {
+  expected: "PASS",
+  type: String,
+  desc: 'Blob.text()'
+})
+
+test_blob_text(() => new Blob().text() , {
+  expected: "",
+  type: String,
+  desc: 'Blob.text() empty Blob'
+})
+
+test_blob_text(() => new Blob(["J", "A", "RRYD"]).text() , {
+  expected: "JARRYD",
+  type: String,
+  desc: 'Blob.text() multi-element array in constructor'
+})
+
+</script>
