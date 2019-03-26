@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<title>Basic use of stateful animator</title>
+<link rel="help" href="https://drafts.css-houdini.org/css-animationworklet/">
+
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/web-animations/testcommon.js"></script>
+<script src="common.js"></script>
+
+<div id="target"></div>
+
+<script>
+async function localTimeNotUpdate(animation) {
+  let last_local_time = animation.effect.getComputedTiming().localTime;
+  let count = 0;
+  const FRAMES_WITHOUT_CHANGE = 10;
+  do {
+    await new Promise(window.requestAnimationFrame);
+    current_local_time = animation.effect.getComputedTiming().localTime;
+    if (last_local_time == current_local_time)
+      ++count;
+    else
+      count = 0;
+    last_local_time = current_local_time;
+  } while (count < FRAMES_WITHOUT_CHANGE);
+}
+</script>
+
+<script id="stateful_animator" type="text/worklet">
+  registerAnimator("stateful_animator", class {
+    constructor(options, state = { test_local_time: 0 }) {
+      this.test_local_time = state.test_local_time;
+    }
+    animate(currentTime, effect) {
+      effect.localTime = this.test_local_time;
+    }
+    state() {
+      return {
+        test_local_time: this.test_local_time + 100
+      };
+    }
+  });
+</script>
+
+<script id="animator_with_incorrect_state_function_name" type="text/worklet">
+  registerAnimator("animator_with_incorrect_state_function_name", class {
+    constructor(options, state = { test_local_time: 0 }) {
+      this.test_local_time = state.test_local_time;
+    }
+    animate(currentTime, effect) {
+      effect.localTime = this.test_local_time++;
+    }
+    State() {
+      return {
+        test_local_time: this.test_local_time + 100
+      };
+    }
+  });
+</script>
+
+<script id="animator_with_empty_state_function" type="text/worklet">
+  registerAnimator("animator_with_empty_state_function", class {
+    constructor(options, state = { test_local_time: 0 }) {
+      this.test_local_time = state.test_local_time;
+    }
+    animate(currentTime, effect) {
+      effect.localTime = this.test_local_time++;
+    }
+    state() {}
+  });
+</script>
+
+<script id="state_function_not_serializable" type="text/worklet">
+  function foo() {}
+  registerAnimator("state_function_not_serializable", class {
+    constructor(options) {
+      this.test_local_time = 0;
+    }
+    animate(currentTime, effect) {
+      effect.localTime = this.test_local_time++;
+    }
+    state() {
+      return foo();
+    }
+  });
+</script>
+
+<script id="state_function_throws" type="text/worklet">
+  registerAnimator("state_function_throws", class {
+    constructor(options) {
+      this.test_local_time = 0;
+    }
+    animate(currentTime, effect) {
+      effect.localTime = this.test_local_time++;
+    }
+    state() {
+      throw 'foo';
+    }
+  });
+</script>
+
+<script>
+  promise_test(async t => {
+    await runInAnimationWorklet(document.getElementById('stateful_animator').textContent);
+    const target = document.getElementById('target');
+    const effect = new KeyframeEffect(target, [{ opacity: 0 }], { duration: 1000 });
+    const animation = new WorkletAnimation('stateful_animator', effect);
+    animation.play();
+
+    await waitForAnimationFrameWithCondition(_ => {
+      return animation.effect.getComputedTiming().localTime == 100;
+    });
+
+    await waitForAnimationFrameWithCondition(_ => {
+      return animation.effect.getComputedTiming().localTime == 200;
+    });
+
+    animation.cancel();
+  }, "Stateful animator can use its state to update the animation. Pass if test does not timeout");
+
+  promise_test(async t => {
+    await runInAnimationWorklet(document.getElementById('animator_with_incorrect_state_function_name').textContent);
+    const target = document.getElementById('target');
+    const effect = new KeyframeEffect(target, [{ opacity: 0 }], { duration: 1000 });
+    const animation = new WorkletAnimation('animator_with_incorrect_state_function_name', effect);
+    animation.play();
+
+    // The local time should be reset to 0 upon migrating animators if the animator is stateless.
+    let count = 0;
+    do {
+      await new Promise(window.requestAnimationFrame);
+      if (1 == animation.effect.getComputedTiming().localTime)
+        ++count;
+    } while (count < 3);
+
+    animation.cancel();
+  }, "Animation's local time is reset if its animator is stateless.");
+
+  promise_test(async t => {
+    await runInAnimationWorklet(document.getElementById('animator_with_empty_state_function').textContent);
+    const target = document.getElementById('target');
+    const effect = new KeyframeEffect(target, [{ opacity: 0 }], { duration: 1000 });
+    const animation = new WorkletAnimation('animator_with_empty_state_function', effect);
+    animation.play();
+
+    // The local time of an animation increases until the registered animator
+    // gets removed.
+    await localTimeNotUpdate(animation);
+
+    animation.cancel();
+  }, "Animation's local time doesn't get updated if its animator has empty state function.");
+
+  promise_test(async t => {
+    await runInAnimationWorklet(document.getElementById('state_function_not_serializable').textContent);
+    const target = document.getElementById('target');
+    const effect = new KeyframeEffect(target, [{ opacity: 0 }], { duration: 1000, iteration: Infinity });
+    const animation = new WorkletAnimation('state_function_not_serializable', effect);
+    animation.play();
+
+    // The local time of an animation increases until the registered animator
+    // gets removed.
+    await localTimeNotUpdate(animation);
+
+    animation.cancel();
+  }, "Animation's local time doesn't get updated after animator migration if its state function is not serializable.");
+
+  promise_test(async t => {
+    await runInAnimationWorklet(document.getElementById('state_function_throws').textContent);
+    const target = document.getElementById('target');
+    const effect = new KeyframeEffect(target, [{ opacity: 0 }], { duration: 1000, iteration: Infinity });
+    const animation = new WorkletAnimation('state_function_throws', effect);
+    animation.play();
+
+    // The local time of an animation increases until the registered animator
+    // gets removed.
+    await localTimeNotUpdate(animation);
+
+    animation.cancel();
+  }, "Animation's local time doesn't get updated after animator migration if its state function throws.");
+</script>
